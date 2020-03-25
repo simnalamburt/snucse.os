@@ -4,10 +4,10 @@ Hyeon Kim's fork of [xv6-riscv]
 
 ```bash
 # Build
-make
+make -j
 
 # Run
-make qemu
+make -j qemu
 ```
 
 &nbsp;
