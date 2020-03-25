@@ -13,9 +13,24 @@ main()
   if(cpuid() == 0){
     consoleinit();
     printfinit();
-    printf("\n");
-    printf("xv6 kernel is booting\n");
-    printf("\n");
+
+    // Practice 1: Modify the xv6 kernel source code so that it prints your
+    // student ID and your name during booting. *Please be creative when you
+    // print them!*
+    printf(
+        "\n"
+        "xv6 kernel is booting... 👀\n"
+        "\n"
+        "     ------------\n"
+        "    | 2013-11392 |\n"
+        "    |   김지현   |\n"
+        "     ------------\n"
+        "           ||\n"
+        "    (\\__/) ||\n"
+        "    (•ㅅ•) ||\n"
+        "🍆  / 　 づ   🥕🥕\n"
+        "\n");
+
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
