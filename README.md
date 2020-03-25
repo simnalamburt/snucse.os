@@ -4,10 +4,10 @@ Hyeon Kim's fork of [xv6-riscv]
 
 ```bash
 # Build
-make CC=riscv64-linux-gnu-gcc-8
+make
 
 # Run
-make qemu CC=riscv64-linux-gnu-gcc-8
+make qemu
 ```
 
 &nbsp;
