@@ -412,22 +412,16 @@ setpgid(int pid, int pgid)
 {
   // Invalid input
   if (pid < 0 || pgid < 0) { return -1; }
-  // There's nothing to do
-  if (pid == 0 && pgid == 0) { return 0; }
-
-  if (pgid == 0) {
-    // If given PGID is 0, use PGID of calling process
-    struct proc *me = myproc();
-    acquire(&me->lock);
-    pgid = me->pgid;
-    release(&me->lock);
-  }
 
   struct proc *p = find_by_pid_then_lock(pid);
   // No matching process
   if (p == 0) { return -1; }
 
   // assert: p is Locked
+
+  // If PGID is 0, then the PGID of the process specified by PID is made the
+  // same as its PID.
+  if (pgid == 0) { pgid = p->pid; }
 
   // Update PGID
   p->pgid = pgid;
