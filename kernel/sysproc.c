@@ -24,6 +24,28 @@ sys_getpid(void)
 }
 
 uint64
+sys_setpgid(void)
+{
+  int pid, pgid;
+  if(argint(0, &pid) < 0)
+    return -1;
+  if(argint(1, &pgid) < 0)
+    return -1;
+
+  return setpgid(pid, pgid);
+}
+
+uint64
+sys_getpgid(void)
+{
+  int pid;
+  if(argint(0, &pid) < 0)
+    return -1;
+
+  return getpgid(pid);
+}
+
+uint64
 sys_fork(void)
 {
   return fork();

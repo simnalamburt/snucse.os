@@ -382,6 +382,77 @@ exit(int status)
   panic("zombie exit");
 }
 
+// Find a process with matching PID and lock it, return it.
+// If PID is 0, locks and returns calling process.
+// If there's no matching PID, return 0 and nothing is locked.
+static struct proc*
+find_by_pid_then_lock(int pid) {
+  struct proc *p;
+
+  // If PID is zero, use calling process and lock it
+  if (pid == 0) {
+    p = myproc();
+    acquire(&p->lock);
+    return p;
+  }
+
+  // Find a process with matching PID and lock it
+  for (p = proc; p < &proc[NPROC]; ++p) {
+    acquire(&p->lock);
+    if (p->pid == pid) {
+      return p;
+    }
+    release(&p->lock);
+  }
+  return 0;
+}
+
+int
+setpgid(int pid, int pgid)
+{
+  // Invalid input
+  if (pid < 0 || pgid < 0) { return -1; }
+  // There's nothing to do
+  if (pid == 0 && pgid == 0) { return 0; }
+
+  if (pgid == 0) {
+    // If given PGID is 0, use PGID of calling process
+    struct proc *me = myproc();
+    acquire(&me->lock);
+    pgid = me->pgid;
+    release(&me->lock);
+  }
+
+  struct proc *p = find_by_pid_then_lock(pid);
+  // No matching process
+  if (p == 0) { return -1; }
+
+  // assert: p is Locked
+
+  // Update PGID
+  p->pgid = pgid;
+  release(&p->lock);
+  return 0;
+}
+
+int
+getpgid(int pid)
+{
+  // Invalid input
+  if (pid < 0) { return -1; }
+
+  struct proc *p = find_by_pid_then_lock(pid);
+  // No matching process
+  if (p == 0) { return -1; }
+
+  // assert: p is Locked
+
+  // Return PGID
+  int pgid = p->pgid;
+  release(&p->lock);
+  return pgid;
+}
+
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int

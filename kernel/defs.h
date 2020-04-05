@@ -97,6 +97,8 @@ void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
+int             setpgid(int, int);
+int             getpgid(int);
 int             wait(uint64);
 void            wakeup(void*);
 void            yield(void);
