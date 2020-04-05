@@ -104,6 +104,7 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  p->pgid = 1;
 
   // Allocate a trapframe page.
   if((p->tf = (struct trapframe *)kalloc()) == 0){
@@ -137,6 +138,7 @@ freeproc(struct proc *p)
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
+  p->pgid = 0;
   p->parent = 0;
   p->name[0] = 0;
   p->chan = 0;
@@ -251,6 +253,9 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
+
+  // Inherit pgid
+  np->pgid = p->pgid;
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
