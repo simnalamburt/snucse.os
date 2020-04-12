@@ -407,6 +407,9 @@ find_by_pid_then_lock(int pid) {
   return 0;
 }
 
+// TODO: Dirty hack to find foreground processes. Please fix me!!
+static _Atomic int foreground_pgid = 0;
+
 int
 setpgid(int pid, int pgid)
 {
@@ -418,6 +421,9 @@ setpgid(int pid, int pgid)
   if (p == 0) { return -1; }
 
   // assert: p is Locked
+
+  // TODO: Dirty hack to find foreground processes. Please fix me!!
+  if (pid == 0 && pgid == 0) { foreground_pgid = p->pid; }
 
   // If PGID is 0, then the PGID of the process specified by PID is made the
   // same as its PID.
@@ -779,4 +785,17 @@ procdump(void)
     printf("%d %d %s %s", p->pid, p->pgid, state, p->name);
     printf("\n");
   }
+}
+
+// Kill foreground process group
+// TODO: Dirty hack to find foreground processes. Please fix me!!
+void
+killfg(void)
+{
+  if (foreground_pgid == 0) { return; }
+
+  // Assert: 0이 아니었던 foreground_pgid가 0으로 다시 바뀌는 일은 존재하지
+  // 않는다.
+
+  kill(-foreground_pgid);
 }
