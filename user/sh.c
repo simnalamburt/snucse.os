@@ -164,8 +164,10 @@ main(void)
         fprintf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
+    if(fork1() == 0) {
+      setpgid(0, 0);
       runcmd(parsecmd(buf));
+    }
     wait(0);
   }
   exit(0);

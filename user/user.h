@@ -20,6 +20,8 @@ int mkdir(const char*);
 int chdir(const char*);
 int dup(int);
 int getpid(void);
+int setpgid(int pid, int pgid);
+int getpgid(int pid);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
