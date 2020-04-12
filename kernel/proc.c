@@ -659,14 +659,53 @@ wakeup1(struct proc *p)
   }
 }
 
-// Kill the process with the given pid.
-// The victim won't exit until it tries to return
-// to user space (see usertrap() in trap.c).
+// If pid is positive: Kill the process with the given pid
+// If pid is negative: Kill all processes in the process group whose PGID is `-pid`
+// If pid is zero: Kill all processes in the process group of the calling process
+//
+// The victim won't exit until it tries to return to user space (see usertrap()
+// in trap.c).
+//
+// If at least one process was terminated, returns 0
+// Otherwise, returns -1
+//
+// Reference:
+//   https://github.com/snu-csl/os-pa3/tree/95a5ab#1-extend-the-kill-system-call
 int
 kill(int pid)
 {
   struct proc *p;
 
+  if (pid <= 0) {
+    int pgid;
+    if (pid < 0) {
+      // pid < 0, Use `-pid` as PGID
+      pgid = -pid;
+    } else {
+      // pid == 0, Use PGID of calling process
+      struct proc *me = myproc();
+      acquire(&me->lock);
+      pgid = me->pgid;
+      release(&me->lock);
+    }
+
+    int ret = -1;
+    for(p = proc; p < &proc[NPROC]; p++){
+      acquire(&p->lock);
+      if(p->pgid == pgid){
+        ret = 0;
+        p->killed = 1;
+        if(p->state == SLEEPING){
+          // Wake process from sleep().
+          p->state = RUNNABLE;
+        }
+      }
+      release(&p->lock);
+    }
+    return ret;
+  }
+
+  // pid > 0
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
