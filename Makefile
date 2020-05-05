@@ -146,8 +146,6 @@ UPROGS=\
 	$U/_zombie\
 	$U/_schedtest1\
 	$U/_schedtest2\
-	$U/_loop_user\
-	$U/_loop_kernel\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
