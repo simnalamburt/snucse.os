@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 #----------------------------------------------------------------
 #
@@ -25,7 +25,7 @@ import sys
 def pre_pros(data):
     lines = open(data, "r+").readlines()
     data = []
-    
+
     for line in lines:
         line_ = re.findall("\d+", line)
         if(len(line_) == 4):
@@ -47,8 +47,8 @@ def plot_df(df, x, y):
     plt.grid()
     plt.legend(loc='upper center', ncol=3)
     plt.title('Ticks')
-    #plt.ylim(ymin=0)
-    #plt.xlim(xmin=0)
+    plt.ylim(ymin=0)
+    plt.xlim(xmin=0)
     plt.savefig(fig, format='png')
     #plt.show()
     plt.close()
