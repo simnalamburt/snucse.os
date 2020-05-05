@@ -468,9 +468,6 @@ scheduler(void)
       if(p->state == RUNNABLE) {
         // assert: 0 <= counter
         // assert: -20 <= nice <= 19
-        // TODO: assertion 삭제
-        if (!(0 <= p->counter && -20 <= p->nice && p->nice <= 19))
-          panic("yield: assertion failed");
 
         const int goodness = p->counter == 0 ?
           // if counter == 0, goodness == 0
@@ -523,8 +520,7 @@ scheduler(void)
             break;
 
           case RUNNING:
-            // TODO: assertion 삭제
-            panic("scheduler: No processes should be running at this point");
+            // assert: this code is not reachable
           case ZOMBIE:
           case UNUSED:
             // Do nothing

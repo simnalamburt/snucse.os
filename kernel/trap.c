@@ -37,9 +37,6 @@ decrement_counter_or_yield(void)
   acquire(&p->lock);
 
   // assert: p->counter > 0
-  // TODO: assertion 삭제
-  if (!(p->counter > 0))
-    panic("decrement_counter_or_yield: counter <= 0");
 
   p->counter -= 1;
   p->ticks += 1;
