@@ -104,6 +104,7 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  p->nice = 0;
 
   // Allocate a trapframe page.
   if((p->tf = (struct trapframe *)kalloc()) == 0){
@@ -144,6 +145,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
 #ifdef SNU
+  p->nice = 0;
   p->ticks = 0;
 #endif
 }
@@ -261,6 +263,7 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+  np->nice = p->nice;
   np->sz = p->sz;
 
   np->parent = p;
@@ -679,6 +682,57 @@ procdump(void)
 }
 
 #ifdef SNU
+// Find a process with matching PID and lock it, return it.
+// If PID is 0, locks and returns calling process.
+// If there's no matching PID, return 0 and nothing is locked.
+static struct proc*
+find_by_pid_then_lock(int pid) {
+  struct proc *p;
+
+  // If PID is zero, use calling process and lock it
+  if (pid == 0) {
+    p = myproc();
+    acquire(&p->lock);
+    return p;
+  }
+
+  // Find a process with matching PID and lock it
+  for (p = proc; p < &proc[NPROC]; ++p) {
+    acquire(&p->lock);
+    if (p->pid == pid && p->state != UNUSED && p->state != ZOMBIE) {
+      return p;
+    }
+    release(&p->lock);
+  }
+  return 0;
+}
+
+int
+nice(int pid, int inc)
+{
+  // Invalid input
+  if (pid < 0) { return -1; }
+
+  struct proc *p = find_by_pid_then_lock(pid);
+  // No matching process
+  if (p == 0) { return -1; }
+
+  // assert: p is Locked
+
+  int next_nice = p->nice + inc;
+  // Check if the resulting nice value exceeds the range [-20, 19]
+  if (next_nice < -20 || 19 < next_nice) {
+    release(&p->lock);
+    return -1;
+  }
+
+  // Update nice
+  p->nice = next_nice;
+
+  release(&p->lock);
+  return 0;
+}
+
 int
 getticks(int pid)
 {
