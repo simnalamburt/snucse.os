@@ -267,8 +267,8 @@ fork(void)
   // Copy nice
   np->nice = p->nice;
   // Split time slice into two
-  np->counter = p->counter >> 1;
-  p->counter = (p->counter+1) >> 1;
+  np->counter = (p->counter+1) >> 1;
+  p->counter = p->counter >> 1;
 
   np->sz = p->sz;
 
