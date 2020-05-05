@@ -104,7 +104,6 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-  p->nice = 0;
 
   // Allocate a trapframe page.
   if((p->tf = (struct trapframe *)kalloc()) == 0){
@@ -146,6 +145,7 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 #ifdef SNU
   p->nice = 0;
+  p->counter = 0;
   p->ticks = 0;
 #endif
 }
@@ -263,7 +263,13 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+
+  // Copy nice
   np->nice = p->nice;
+  // Split time slice into two
+  np->counter = p->counter >> 1;
+  p->counter = (p->counter+1) >> 1;
+
   np->sz = p->sz;
 
   np->parent = p;
@@ -447,7 +453,6 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
   
   c->proc = 0;
@@ -455,21 +460,78 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
+    int max_goodness = 0x80000000; // INT_MIN
+    struct proc *next_p = 0;
+
+    for(struct proc *p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
+        // assert: 0 <= counter
+        // assert: -20 <= nice <= 19
+        // TODO: assertion 삭제
+        if (!(0 <= p->counter && -20 <= p->nice && p->nice <= 19))
+          panic("yield: assertion failed");
+
+        const int goodness = p->counter == 0 ?
+          // if counter == 0, goodness == 0
+          0 :
+          // if counter > 0, goodness >= 2
+          p->counter + (20 - p->nice);
+
+        if (max_goodness < goodness) {
+          max_goodness = goodness;
+          next_p = p;
+        }
+      }
+      release(&p->lock);
+    }
+
+    if (next_p == 0) {
+      // No runnable process
+      // Do nothing and proceed the loop (busy wait)
+    } else if (max_goodness > 0) {
+      // Runnable process exists
+      acquire(&next_p->lock);
+      if(next_p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->scheduler, &p->context);
+        next_p->state = RUNNING;
+        c->proc = next_p;
+        swtch(&c->scheduler, &next_p->context);
 
         // Process is done running for now.
-        // It should have changed its p->state before coming back.
+        // It should have changed its next_p->state before coming back.
         c->proc = 0;
       }
-      release(&p->lock);
+      release(&next_p->lock);
+    } else {
+      // next_p != 0, max_goodness == 0: All runnable processes' goodness is 0
+      // p->counter of all processes are 0
+
+      // NOTE: Moving on to the next epoch
+
+      // Redistributes time slices for all processes
+      for (struct proc *p = proc; p < &proc[NPROC]; ++p) {
+        acquire(&p->lock);
+        switch(p->state) {
+          case RUNNABLE:
+            p->counter = ((20-(p->nice)) >> 2) + 1;
+            break;
+          case SLEEPING: // Blocked
+            p->counter = (p->counter >> 1) + ((20-(p->nice)) >> 2) + 1;
+            break;
+
+          case RUNNING:
+            // TODO: assertion 삭제
+            panic("scheduler: No processes should be running at this point");
+          case ZOMBIE:
+          case UNUSED:
+            // Do nothing
+            break;
+        }
+        release(&p->lock);
+      }
     }
   }
 }
@@ -508,9 +570,6 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-#ifdef SNU
-  p->ticks++;
-#endif
   sched();
   release(&p->lock);
 }

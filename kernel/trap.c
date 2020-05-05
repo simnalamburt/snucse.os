@@ -29,6 +29,28 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+// counter를 decrement하고, counter가 0이 될 경우 yield() 함
+static void
+decrement_counter_or_yield(void)
+{
+  struct proc *p = myproc();
+  acquire(&p->lock);
+
+  // assert: p->counter > 0
+  // TODO: assertion 삭제
+  if (!(p->counter > 0))
+    panic("decrement_counter_or_yield: counter <= 0");
+
+  p->counter -= 1;
+  p->ticks += 1;
+
+  const int no_more_timeslice = p->counter <= 0;
+  release(&p->lock);
+
+  if (no_more_timeslice)
+    yield();
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -78,7 +100,7 @@ usertrap(void)
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
-    yield();
+    decrement_counter_or_yield();
 
   usertrapret();
 }
@@ -151,9 +173,9 @@ kerneltrap()
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+    decrement_counter_or_yield();
 
-  // the yield() may have caused some traps to occur,
+  // the decrement_counter_or_yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
   w_sepc(sepc);
   w_sstatus(sstatus);
