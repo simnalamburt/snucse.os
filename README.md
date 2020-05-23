@@ -6,6 +6,7 @@ Hyeon Kim's fork of [xv6-riscv]
 - Project 2: [System calls](https://github.com/snu-csl/os-pa2)
 - Project 3: [Terminating processes](https://github.com/snu-csl/os-pa3)
 - Project 4: [Simplified Linux 2.4 Scheduler](https://github.com/snu-csl/os-pa4)
+- Project 5: [Memory sharing across `fork()`](https://github.com/snu-csl/os-pa5)
 
 &nbsp;
 
