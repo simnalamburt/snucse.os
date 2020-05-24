@@ -192,7 +192,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      if (krc_get((void*)pa)) {
+      if (krc_is_shared((void*)pa)) {
         // The page is reference-counted, decrease the counter
         krc_decr((void*)pa);
       } else {
@@ -273,7 +273,7 @@ uvmalloc_with_perm_rc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int per
       return 0;
     }
     if(is_rc)
-      krc_incr(mem);
+      krc_start_share(mem);
   }
   return newsz;
 }
@@ -354,7 +354,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(krc_get((void*)pa)){
+    if(krc_is_shared((void*)pa)){
       // The page is reference-counted, share the page
       mem = (char*)pa;
       krc_incr((void*)pa);
