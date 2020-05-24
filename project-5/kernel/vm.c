@@ -6,6 +6,153 @@
 #include "defs.h"
 #include "fs.h"
 
+// Metadata of shared/CoW pages will be stored in array of struct uvm_meta
+struct uvm_meta {
+  // Key of associated array
+  uint16 physical_page_number;
+
+  // Values of associated array
+  uint8 reference_count;
+  uint8 __reserved;
+};
+// No padding should be inserted
+_Static_assert(sizeof(struct uvm_meta) == 4, "sizeof(struct uvm_meta) should be 4");
+
+// Maximum length of meta_list
+//
+// NOTE: Limit is rather small
+enum { META_LIST_MAX = 1000 };
+
+// Length of meta[] array
+static uint64 meta_list_length;
+// NOTE: meta[] array is sorted by uvm_meta::physical_page_number
+static struct uvm_meta meta_list[META_LIST_MAX];
+
+struct meta_bisect_result {
+  uint64 index;
+  int exist;
+};
+
+// Return a right place for pa in meta_list[]
+//
+// If pa was already in meta_list[], exist = 1
+// Otherwise, exist = 0
+static struct meta_bisect_result
+meta_bisect(const void *pa)
+{
+  if ((uint64)pa >= PHYSTOP)
+    panic("meta_bisect: pa too large");
+  if ((uint64)pa < KERNBASE)
+    panic("meta_bisect: pa too small");
+  uint16 query = (uint16)(((uint64)pa - KERNBASE)/PGSIZE);
+
+  // Bisection range: [lo, hi)
+  uint64 lo = 0;
+  uint64 hi = meta_list_length;
+  while (lo < hi) {
+    uint64 mid = lo + (hi - lo)/2;
+    uint16 result = meta_list[mid].physical_page_number;
+    if (result == query) {
+      return (struct meta_bisect_result) { .index = mid, .exist = 1 };
+    } else if (result < query) {
+      lo = mid + 1;
+    } else { // result > query
+      hi = mid;
+    }
+  }
+
+  return (struct meta_bisect_result) { .index = lo, .exist = 0 };
+}
+
+// Start reference counting of given page
+static void
+meta_start_share(void *pa)
+{
+  // Find a right place to insert new metadata
+  const struct meta_bisect_result res = meta_bisect(pa);
+  if (res.exist) {
+    panic("meta_start_share: Given pa was already shared");
+  }
+
+  // Move existing entries
+  if (meta_list_length == META_LIST_MAX - 1)
+    panic("meta_start_share: Too many managed pages");
+  memmove(&meta_list[res.index + 1], &meta_list[res.index], sizeof(struct uvm_meta)*(meta_list_length - res.index));
+  // Increment length
+  ++meta_list_length;
+
+  // Insert new entry
+  meta_list[res.index] = (struct uvm_meta) {
+    .physical_page_number = (uint16)(((uint64)pa - KERNBASE)/PGSIZE),
+    .reference_count = 1,
+  };
+}
+
+// If given pa is reference counted, return 1
+// Otherwise, return 0
+//
+// NOTE: 전체적으로 meta[] 에 접근할때에 락도 안하고있고, 이렇게 is_shared 같은
+// API를 만들면 TOCTOU 문제가 생길 수 있음. 이 과제에선 싱글코어 CPU로 제한했기
+// 때문에 그냥 이렇게 구현한다.
+static int
+meta_is_shared(const void *pa)
+{
+  // TODO: Change required at CoW implementation
+  struct meta_bisect_result res = meta_bisect(pa);
+  return res.exist;
+}
+
+// Increase reference count
+// If given pa is not reference counter, panic
+// If integer overflow occurs, panic
+static void
+meta_incr(void *pa)
+{
+  // Find metadata
+  struct meta_bisect_result res = meta_bisect(pa);
+  if (!res.exist) {
+    panic("meta_incr: given pa was not shared");
+  }
+
+  // Increment RC, check overflow
+  uint8 * const p_counter = &meta_list[res.index].reference_count;
+  if (*p_counter == 0xFF) {
+    panic("meta_incr: reference counter integer overflow");
+  }
+  ++*p_counter;
+}
+
+// Decrease RC, free the page if RC become 0, panic on overflow
+static void
+meta_decr(void *pa)
+{
+  // Find metadata
+  struct meta_bisect_result res = meta_bisect(pa);
+  if (!res.exist) {
+    panic("meta_incr: given pa was not shared");
+  }
+
+  // Decrement RC, check overflow
+  uint8 * const p_counter = &meta_list[res.index].reference_count;
+  if (*p_counter == 0) {
+    panic("meta_decr: reference counter integer overflow");
+  }
+
+  --*p_counter;
+
+  // If reference counter reached zero, delete the metadata and free the page
+  if (*p_counter == 0) {
+    // Move existing entries
+    memmove(&meta_list[res.index], &meta_list[res.index + 1], sizeof(struct uvm_meta)*(meta_list_length - res.index - 1));
+    // Increment length
+    --meta_list_length;
+
+    kfree(pa);
+  }
+}
+
+
+
 /*
  * the kernel's page table.
  */
@@ -192,7 +339,13 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      if (meta_is_shared((void*)pa)) {
+        // The page is reference-counted, decrease the counter
+        meta_decr((void*)pa);
+      } else {
+        // The page is not reference-counted, free it
+        kfree((void*)pa);
+      }
     }
     *pte = 0;
     if(a == last)
@@ -232,8 +385,11 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
+//
+// Map new pages with given permission. Perform reference counting for given
+// pages if type is UVM_SHARED
 uint64
-uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm, enum uvm_type type)
 {
   char *mem;
   uint64 a;
@@ -250,10 +406,20 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, perm) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
+    }
+
+    switch (type) {
+      case UVM_UNMANAGED:
+        break;
+      case UVM_SHARED:
+        meta_start_share(mem);
+        break;
+      default:
+        panic("uvmalloc: Invalid type");
     }
   }
   return newsz;
@@ -309,10 +475,14 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
+// Given a parent process's page table, copy or share
 // its memory into a child's page table.
-// Copies both the page table and the
+// Copies or share both the page table and the
 // physical memory.
+//
+// If a page was reference-counted, the page will be shared.
+// Otherwise, the page will be copied.
+//
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
@@ -330,9 +500,18 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+
+    if(meta_is_shared((void*)pa)){
+      // The page is reference-counted, share the page
+      mem = (char*)pa;
+      meta_incr((void*)pa);
+    } else {
+      // The page is not reference-counted, copy it
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+    }
+
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
       kfree(mem);
       goto err;
