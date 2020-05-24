@@ -25,6 +25,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
+  uint8 reference_counter[(PHYSTOP - KERNBASE)/PGSIZE];
 } kmem;
 
 void
@@ -66,6 +67,13 @@ kfree(void *pa)
 #ifdef SNU
   freemem++;
 #endif
+
+  // TODO: Remove assertion
+  if (kmem.reference_counter[((uint64)r - KERNBASE)/PGSIZE]) {
+    kmem.reference_counter[((uint64)r - KERNBASE)/PGSIZE] = 0;
+    panic("kfree: Reference counter is not zero");
+  }
+
   release(&kmem.lock);
 }
 
@@ -93,4 +101,36 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+// Increase RC, panic on overflow
+void
+krc_incr(void *pa)
+{
+  uint8 * const p_rc = &kmem.reference_counter[((uint64)pa - KERNBASE)/PGSIZE];
+
+  if (*p_rc == 0xFF) {
+    panic("kcr_incr: reference counter integer overflow");
+  }
+
+  ++*p_rc;
+}
+
+// Decrease RC, free the page if RC become 0, panic on overflow
+void
+krc_decr(void *pa)
+{
+  uint8 * const p_rc = &kmem.reference_counter[((uint64)pa - KERNBASE)/PGSIZE];
+
+  // TODO: Remove assertion
+  if (*p_rc == 0) {
+    panic("kcr_decr: reference counter integer overflow");
+    return;
+  }
+
+  --*p_rc;
+
+  if (*p_rc == 0) {
+    kfree(pa);
+  }
 }

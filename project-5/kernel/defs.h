@@ -61,6 +61,8 @@ void            ramdiskrw(struct buf*);
 // kalloc.c
 void*           kalloc(void);
 void            kfree(void *);
+void            krc_incr(void *);
+void            krc_decr(void *);
 void            kinit();
 #ifdef SNU
 extern uint64   freemem;
