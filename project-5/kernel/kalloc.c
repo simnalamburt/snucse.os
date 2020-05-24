@@ -134,3 +134,9 @@ krc_decr(void *pa)
     kfree(pa);
   }
 }
+
+uint8
+krc_get(const void *pa)
+{
+  return kmem.reference_counter[((uint64)pa - KERNBASE)/PGSIZE];
+}

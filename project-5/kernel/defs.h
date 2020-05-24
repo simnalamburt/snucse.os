@@ -63,6 +63,7 @@ void*           kalloc(void);
 void            kfree(void *);
 void            krc_incr(void *);
 void            krc_decr(void *);
+uint8           krc_get(const void *);
 void            kinit();
 #ifdef SNU
 extern uint64   freemem;
