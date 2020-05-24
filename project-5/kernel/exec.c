@@ -55,16 +55,6 @@ exec(char *path, char **argv)
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
 #endif
-
-    // TODO: Remove debug code
-    printf(
-      "exec: pid=%d\n"
-      "  flags  : RWX=%d%d%d\n"
-      "  VA->PA : [%p, %p) -> [%p, %p)\n",
-      p->pid,
-      !!(ph.flags & ELF_PROG_FLAG_READ), !!(ph.flags & ELF_PROG_FLAG_WRITE), !!(ph.flags & ELF_PROG_FLAG_EXEC),
-      ph.vaddr, ph.vaddr + ph.memsz, ph.paddr, ph.paddr + ph.memsz);
-
     if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
   }
