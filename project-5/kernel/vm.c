@@ -192,7 +192,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      // TODO: Leak
+      // kfree((void*)pa);
     }
     *pte = 0;
     if(a == last)
@@ -235,6 +236,17 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
+  return uvmalloc_with_perm(pagetable, oldsz, newsz, PTE_W|PTE_X|PTE_R|PTE_U);
+}
+
+
+// Allocate PTEs and physical memory with given permission to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
+//
+// If is_rc is true, start reference counting with new pages
+uint64
+uvmalloc_with_perm(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm)
+{
   char *mem;
   uint64 a;
 
@@ -250,7 +262,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, perm) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
@@ -330,9 +342,17 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+
+    if(flags & PTE_W){
+      // The page is writable, copy it
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+    } else {
+      // The page is read-only, share the page
+      mem = (char*)pa;
+    }
+
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
       kfree(mem);
       goto err;

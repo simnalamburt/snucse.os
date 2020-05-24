@@ -49,7 +49,13 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
-    if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    int perm = (
+      ((ph.flags & ELF_PROG_FLAG_READ) ? PTE_R : 0) |
+      ((ph.flags & ELF_PROG_FLAG_WRITE) ? PTE_W : 0) |
+      ((ph.flags & ELF_PROG_FLAG_EXEC) ? PTE_X : 0) |
+      PTE_U
+    );
+    if((sz = uvmalloc_with_perm(pagetable, sz, ph.vaddr + ph.memsz, perm)) == 0)
       goto bad;
 #ifndef SNU
     if(ph.vaddr % PGSIZE != 0)
