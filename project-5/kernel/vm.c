@@ -235,6 +235,14 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
+  return uvmalloc_with_perm(pagetable, oldsz, newsz, PTE_W|PTE_X|PTE_R|PTE_U);
+}
+
+// Allocate PTEs and physical memory with given permission to grow process from oldsz to
+// newsz, which need not be page aligned.  Returns new size or 0 on error.
+uint64
+uvmalloc_with_perm(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm)
+{
   char *mem;
   uint64 a;
 
@@ -250,7 +258,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, perm) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
