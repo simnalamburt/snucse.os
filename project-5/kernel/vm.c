@@ -145,6 +145,17 @@ meta_decr_of(void *pa)
   }
 }
 
+uint8
+__meta_rc(const void *pa)
+{
+  struct meta_bisect_result res = meta_bisect((void *)pa);
+  if (!res.exist) {
+    return 0;
+  }
+
+  return meta_list[res.index].reference_count;
+}
+
 
 
 /*

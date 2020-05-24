@@ -155,6 +155,7 @@ void            uartputc(int);
 int             uartgetc(void);
 
 // vm.c
+uint8           __meta_rc(const void *pa);
 void            kvminit(void);
 void            kvminithart(void);
 uint64          kvmpa(uint64);

@@ -674,6 +674,57 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+
+    // TODO: Remove me
+    // 이 프로세스의 virtual address space 생김새 출력
+    printf(
+      "\n"
+      "virtual address    | UXWRV | physical address   | info                  | RC\n"
+      "-------------------|-------|--------------------|-----------------------|----\n"
+    );
+    for (int i = 511; i >= 0; --i) {
+      // Level 2
+      pte_t pte = p->pagetable[i];
+      if (pte == 0) { continue; }
+      pagetable_t pagetable = (pagetable_t)PTE2PA(pte);
+
+      for (int j = 511; j >= 0; --j) {
+        // Level 1
+        pte_t pte = pagetable[j];
+        if (pte == 0) { continue; }
+        pagetable_t pagetable = (pagetable_t)PTE2PA(pte);
+
+        for (int k = 511; k >= 0; --k) {
+          // Level 0
+          pte_t pte = pagetable[k];
+          if (pte == 0) { continue; }
+          const void *physical_addr = (const void *)PTE2PA(pte);
+          uint64 virtual_addr = ((uint64)i<<30) | ((uint64)j << 21) | ((uint64)k << 12);
+
+          printf("%p | %d%d%d%d%d | %p | %s | ",
+            virtual_addr,
+            !!(pte & PTE_U), !!(pte & PTE_X), !!(pte & PTE_W), !!(pte & PTE_R), !!(pte & PTE_V),
+            physical_addr,
+            virtual_addr == (uint64)TRAMPOLINE                          ? "trampoline           " :
+            virtual_addr == (uint64)TRAPFRAME                           ? "trapframe            " :
+            (pte & (PTE_U | PTE_X | PTE_W | PTE_R | PTE_V)) == 0b10111  ? "stack+heap+data      " :
+            (pte & (PTE_U | PTE_X | PTE_W | PTE_R | PTE_V)) == 0b00111  ? "stackguard           " :
+            (pte & (PTE_U | PTE_X | PTE_W | PTE_R | PTE_V)) == 0b10011  ? "stack+heap+data (cow)" :
+            (pte & (PTE_U | PTE_X | PTE_W | PTE_R | PTE_V)) == 0b00011  ? "stackguard      (cow)" :
+            (pte & (PTE_U | PTE_X | PTE_W | PTE_R | PTE_V)) == 0b11011  ? "code+rodata          " :
+            "                     "
+          );
+          uint8 rc = __meta_rc(physical_addr);
+          if (rc) {
+            printf("%d\n", rc);
+          } else {
+            printf("\n");
+          }
+        }
+      }
+    }
+    printf("\n");
+    // TODO: Remove me
   }
 #ifdef SNU
   printf("freemem = %d (pages)\n", freemem);
