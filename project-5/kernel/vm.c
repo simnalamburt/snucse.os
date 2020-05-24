@@ -170,7 +170,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 }
 
 // Remove mappings from a page table. The mappings in
-// the given range must exist. Optionally free the
+// the given range must exist. Optionally free or decrease refernce counter of the
 // physical memory.
 void
 uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
@@ -192,7 +192,13 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      kfree((void*)pa);
+      if (krc_get((void*)pa)) {
+        // The page is reference-counted, decrease the counter
+        krc_decr((void*)pa);
+      } else {
+        // The page is not reference-counted, free it
+        kfree((void*)pa);
+      }
     }
     *pte = 0;
     if(a == last)
@@ -235,13 +241,16 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
-  return uvmalloc_with_perm(pagetable, oldsz, newsz, PTE_W|PTE_X|PTE_R|PTE_U);
+  return uvmalloc_with_perm_rc(pagetable, oldsz, newsz, PTE_W|PTE_X|PTE_R|PTE_U, 0);
 }
+
 
 // Allocate PTEs and physical memory with given permission to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
+//
+// If is_rc is true, start reference counting with new pages
 uint64
-uvmalloc_with_perm(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm)
+uvmalloc_with_perm_rc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm, int is_rc)
 {
   char *mem;
   uint64 a;
@@ -263,6 +272,8 @@ uvmalloc_with_perm(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
+    if(is_rc)
+      krc_incr(mem);
   }
   return newsz;
 }
@@ -317,10 +328,14 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
+// Given a parent process's page table, copy or share
 // its memory into a child's page table.
-// Copies both the page table and the
+// Copies or share both the page table and the
 // physical memory.
+//
+// If a page was reference-counted, the page will be shared.
+// Otherwise, the page will be copied.
+//
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
@@ -338,9 +353,18 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+
+    if(krc_get((void*)pa)){
+      // The page is reference-counted, share the page
+      mem = (char*)pa;
+      krc_incr((void*)pa);
+    } else {
+      // The page is not reference-counted, copy it
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+    }
+
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
       kfree(mem);
       goto err;

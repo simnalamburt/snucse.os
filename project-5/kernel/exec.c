@@ -55,7 +55,8 @@ exec(char *path, char **argv)
       ((ph.flags & ELF_PROG_FLAG_EXEC) ? PTE_X : 0) |
       PTE_U
     );
-    if((sz = uvmalloc_with_perm(pagetable, sz, ph.vaddr + ph.memsz, perm)) == 0)
+    int is_readonly = !(ph.flags & ELF_PROG_FLAG_WRITE);
+    if((sz = uvmalloc_with_perm_rc(pagetable, sz, ph.vaddr + ph.memsz, perm, is_readonly)) == 0)
       goto bad;
 #ifndef SNU
     if(ph.vaddr % PGSIZE != 0)
