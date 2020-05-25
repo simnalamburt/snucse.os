@@ -236,7 +236,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
-  return uvmalloc_with_perm(pagetable, oldsz, newsz, PTE_W|PTE_X|PTE_R|PTE_U);
+  return uvmalloc_with_perm(pagetable, oldsz, newsz, PTE_W|PTE_R|PTE_U);
 }
 
 
@@ -343,14 +343,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(flags & PTE_W){
+    if((flags & PTE_U) && (flags & PTE_X)){
+      // The page is read-only, share the page
+      mem = (char*)pa;
+    } else {
       // The page is writable, copy it
       if((mem = kalloc()) == 0)
         goto err;
       memmove(mem, (char*)pa, PGSIZE);
-    } else {
-      // The page is read-only, share the page
-      mem = (char*)pa;
     }
 
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
