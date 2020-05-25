@@ -343,7 +343,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if((flags & PTE_U) && (flags & PTE_X)){
+    if((flags & PTE_U) && (flags & PTE_X) && (!(flags & PTE_W))){
       // The page is read-only, share the page
       mem = (char*)pa;
     } else {
