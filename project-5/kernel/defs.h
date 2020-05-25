@@ -162,7 +162,7 @@ void            kvmmap(uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
-enum uvm_type { UVM_UNMANAGED, UVM_SHARED };
+enum uvm_type { __UVM_UNINITIALIZED = 0, UVM_SHARED, UVM_COW };
 uint64          uvmalloc(pagetable_t, uint64, uint64, int, enum uvm_type);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
@@ -177,6 +177,7 @@ int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            freewalk(pagetable_t);
 uint64          v2p(pagetable_t, uint64);
 #endif
+int             handle_cow_write(uint64, pagetable_t);
 
 // plic.c
 void            plicinit(void);

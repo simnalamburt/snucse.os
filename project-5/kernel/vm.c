@@ -13,7 +13,7 @@ struct uvm_meta {
 
   // Values of associated array
   uint8 reference_count;
-  uint8 __reserved;
+  enum uvm_type type : 8;
 };
 // No padding should be inserted
 _Static_assert(sizeof(struct uvm_meta) == 4, "sizeof(struct uvm_meta) should be 4");
@@ -66,7 +66,7 @@ meta_bisect(const void *pa)
 
 // Start reference counting of given page
 static void
-meta_start_share(void *pa)
+meta_start_share(void *pa, enum uvm_type type)
 {
   // Find a right place to insert new metadata
   const struct meta_bisect_result res = meta_bisect(pa);
@@ -85,21 +85,25 @@ meta_start_share(void *pa)
   meta_list[res.index] = (struct uvm_meta) {
     .physical_page_number = (uint16)(((uint64)pa - KERNBASE)/PGSIZE),
     .reference_count = 1,
+    .type = type,
   };
 }
 
-// If given pa is reference counted, return 1
+// If given pa is UVM_COW, return 1
 // Otherwise, return 0
 //
-// NOTE: 전체적으로 meta[] 에 접근할때에 락도 안하고있고, 이렇게 is_shared 같은
-// API를 만들면 TOCTOU 문제가 생길 수 있음. 이 과제에선 싱글코어 CPU로 제한했기
-// 때문에 그냥 이렇게 구현한다.
+// NOTE: 전체적으로 meta[] 에 접근할때에 락도 안하고있고, 이렇게 API를 만들면
+// lookup을 여러번 반복해야해서 비효율적이며 TOCTOU 문제가 발생함.  이 과제에선
+// 싱글코어 CPU로 제한했고, 시간 효율성은 채점범위 밖이여서 그냥 이렇게
+// 구현한다.
 static int
-meta_is_shared(const void *pa)
+meta_is_cow(const void *pa)
 {
-  // TODO: Change required at CoW implementation
   struct meta_bisect_result res = meta_bisect(pa);
-  return res.exist;
+  if (!res.exist)
+    panic("meta_is_cow: given pa was not shared");
+
+  return meta_list[res.index].type == UVM_COW;
 }
 
 // Increase reference count
@@ -339,13 +343,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      if (meta_is_shared((void*)pa)) {
-        // The page is reference-counted, decrease the counter
-        meta_decr((void*)pa);
-      } else {
-        // The page is not reference-counted, free it
-        kfree((void*)pa);
-      }
+      meta_decr((void*)pa);
     }
     *pte = 0;
     if(a == last)
@@ -380,6 +378,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
+  meta_start_share(mem, UVM_COW);
   memmove(mem, src, sz);
 }
 
@@ -391,6 +390,9 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm, enum uvm_type type)
 {
+  if (type != UVM_SHARED && type != UVM_COW)
+    panic("uvmalloc: Invalid type");
+
   char *mem;
   uint64 a;
 
@@ -411,16 +413,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm, enum uvm_t
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
-
-    switch (type) {
-      case UVM_UNMANAGED:
-        break;
-      case UVM_SHARED:
-        meta_start_share(mem);
-        break;
-      default:
-        panic("uvmalloc: Invalid type");
-    }
+    meta_start_share(mem, type);
   }
   return newsz;
 }
@@ -501,15 +494,12 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
-    if(meta_is_shared((void*)pa)){
-      // The page is reference-counted, share the page
-      mem = (char*)pa;
-      meta_incr((void*)pa);
-    } else {
-      // The page is not reference-counted, copy it
-      if((mem = kalloc()) == 0)
-        goto err;
-      memmove(mem, (char*)pa, PGSIZE);
+    mem = (char*)pa;
+    meta_incr((void*)pa);
+    // Set as unwritable if CoW borrow occured
+    if (meta_is_cow((void*)pa)) {
+      *pte &= ~PTE_W;
+      flags &= ~PTE_W;
     }
 
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
@@ -645,3 +635,40 @@ v2p(pagetable_t pagetable, uint64 va)
   return pa;  
 }
 #endif
+
+// Return 1 if user performed invalid access
+int
+handle_cow_write(uint64 va, pagetable_t pagetable)
+{
+  if (va >= MAXVA) { return 1; }
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte == 0) { return 1; }
+  if ((*pte & PTE_V) == 0) { return 1; }
+  if ((*pte & PTE_U) == 0) { return 1; }
+  uint64 pa = PTE2PA(*pte);
+
+  const struct meta_bisect_result res = meta_bisect((void *)pa);
+  if (!res.exist) {
+    panic("usertrap: All UVMs should be shared");
+  }
+  struct uvm_meta *meta = &meta_list[res.index];
+  if ((meta->type != UVM_SHARED && meta->type != UVM_COW) || meta->reference_count == 0) {
+    panic("usertrap: invalid metadata");
+  }
+  if (meta->type == UVM_SHARED) {
+    return 1;
+  }
+  if (meta->reference_count == 1) {
+    *pte |= PTE_W;
+  } else {
+    --meta->reference_count;
+
+    // TODO: 에러처리 하나도 안함
+    void *mem = kalloc();
+    memmove(mem, (void *)pa, PGSIZE);
+    int flags = PTE_FLAGS(*pte);
+    *pte = PA2PTE(mem) | flags | PTE_W | PTE_V;
+    meta_start_share(mem, UVM_COW);
+  }
+  return 0;
+}

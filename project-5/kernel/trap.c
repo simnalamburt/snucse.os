@@ -50,7 +50,8 @@ usertrap(void)
   // save user program counter.
   p->tf->epc = r_sepc();
   
-  if(r_scause() == 8){
+  uint64 scause = r_scause();
+  if (scause == 8) {
     // system call
 
     if(p->killed)
@@ -65,6 +66,13 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (scause == 15) {
+    uint64 va = r_stval();
+    if(handle_cow_write(va, p->pagetable)) {
+      printf("usertrap(): invalid address access pid=%d\n", p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

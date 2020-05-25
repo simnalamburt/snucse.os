@@ -233,7 +233,7 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_R | PTE_W | PTE_U, UVM_UNMANAGED)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_R | PTE_W | PTE_U, UVM_COW)) == 0) {
       return -1;
     }
   } else if(n < 0){
