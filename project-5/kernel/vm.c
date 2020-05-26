@@ -231,14 +231,10 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   return &pagetable[PX(0, va)];
 }
 
-// Look up a virtual address, return the physical address,
-// or 0 if not mapped.
-// Can only be used to look up user pages.
-uint64
-walkaddr(pagetable_t pagetable, uint64 va)
+static pte_t *
+walk_uvm_checked(pagetable_t pagetable, uint64 va)
 {
   pte_t *pte;
-  uint64 pa;
 
   if(va >= MAXVA)
     return 0;
@@ -250,8 +246,17 @@ walkaddr(pagetable_t pagetable, uint64 va)
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
-  pa = PTE2PA(*pte);
-  return pa;
+  return pte;
+}
+
+// Look up a virtual address, return the physical address,
+// or 0 if not mapped.
+// Can only be used to look up user pages.
+uint64
+walkaddr(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte = walk_uvm_checked(pagetable, va);
+  return PTE2PA(*pte);
 }
 
 // add a mapping to the kernel page table.
