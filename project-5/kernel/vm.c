@@ -129,7 +129,7 @@ meta_decr(void *pa)
   // Find metadata
   struct meta_bisect_result res = meta_bisect(pa);
   if (!res.exist) {
-    panic("meta_incr: given pa was not shared");
+    panic("meta_decr: given pa was not shared");
   }
 
   // Decrement RC, check overflow
