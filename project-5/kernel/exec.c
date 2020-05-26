@@ -55,8 +55,7 @@ exec(char *path, char **argv)
       ((ph.flags & ELF_PROG_FLAG_EXEC) ? PTE_X : 0) |
       PTE_U
     );
-    // TODO: writable 하더라도 executable이면 무조건 share해야하는데, 이상함
-    enum uvm_type type = ph.flags & ELF_PROG_FLAG_EXEC ? UVM_SHARED : UVM_COW;
+    enum uvm_type type = ((ph.flags & ELF_PROG_FLAG_EXEC) && !(ph.flags & ELF_PROG_FLAG_WRITE)) ? UVM_SHARED : UVM_COW;
     if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz, perm, type)) == 0)
       goto bad;
 #ifndef SNU
