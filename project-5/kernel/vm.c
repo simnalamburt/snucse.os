@@ -548,8 +548,14 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       *pte |= PTE_W;
     } else {
       // This CoW page is being shared, copy and write it
-      // TODO: implement
-      *pte |= PTE_W;
+      --meta->reference_count;
+
+      // TODO: No error handling
+      void *mem = kalloc();
+      memmove(mem, (void *)pa0, PGSIZE);
+      int flags = PTE_FLAGS(*pte);
+      *pte = PA2PTE(mem) | flags | PTE_W | PTE_V;
+      meta_start_share(mem, UVM_COW);
     }
     uint64 pa1 = PTE2PA(*pte);
     memmove((void *)(pa1 + (dstva - va0)), src, n);
