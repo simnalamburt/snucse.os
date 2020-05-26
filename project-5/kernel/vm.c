@@ -525,17 +525,34 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
-  uint64 n, va0, pa0;
-
   while(len > 0){
-    va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    uint64 va0 = PGROUNDDOWN(dstva);
+    pte_t *pte = walk_uvm_checked(pagetable, va0);
+    uint64 pa0 = PTE2PA(*pte);
     if(pa0 == 0)
       return -1;
-    n = PGSIZE - (dstva - va0);
+    uint64 n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
+
+    struct uvm_meta *meta = meta_of((void *)pa0);
+    if (meta == 0) {
+      panic("copyout: All UVMs should be shared");
+    }
+    if (meta->type == UVM_SHARED) {
+      panic("copyout: Tried to write on shared readonly page");
+    }
+
+    if (meta->reference_count == 1) {
+      // This CoW page is not shared, OK to write it
+      *pte |= PTE_W;
+    } else {
+      // This CoW page is being shared, copy and write it
+      // TODO: implement
+      *pte |= PTE_W;
+    }
+    uint64 pa1 = PTE2PA(*pte);
+    memmove((void *)(pa1 + (dstva - va0)), src, n);
 
     len -= n;
     src += n;
