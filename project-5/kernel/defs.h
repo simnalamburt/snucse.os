@@ -162,7 +162,7 @@ void            kvmmap(uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
-enum uvm_type { __UVM_UNINITIALIZED = 0, UVM_SHARED, UVM_COW };
+enum uvm_type { UVM_SHARED = 1, UVM_COW = 2 };
 uint64          uvmalloc(pagetable_t, uint64, uint64, int, enum uvm_type);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
 int             uvmcopy(pagetable_t, pagetable_t, uint64);

@@ -89,57 +89,47 @@ meta_start_share(void *pa, enum uvm_type type)
   };
 }
 
-// If given pa is UVM_COW, return 1
-// Otherwise, return 0
-//
-// NOTE: 전체적으로 meta[] 에 접근할때에 락도 안하고있고, 이렇게 API를 만들면
-// lookup을 여러번 반복해야해서 비효율적이며 TOCTOU 문제가 발생함.  이 과제에선
-// 싱글코어 CPU로 제한했고, 시간 효율성은 채점범위 밖이여서 그냥 이렇게
-// 구현한다.
-static int
-meta_is_cow(const void *pa)
+static struct uvm_meta *
+meta_of(void *pa)
 {
-  struct meta_bisect_result res = meta_bisect(pa);
-  if (!res.exist)
-    panic("meta_is_cow: given pa was not shared");
-
-  return meta_list[res.index].type == UVM_COW;
+  const struct meta_bisect_result res = meta_bisect((void *)pa);
+  if (!res.exist) {
+    return 0;
+  }
+  struct uvm_meta *meta = &meta_list[res.index];
+  if ((meta->type != UVM_SHARED && meta->type != UVM_COW) || meta->reference_count == 0) {
+    panic("usertrap: invalid metadata");
+  }
+  return meta;
 }
 
 // Increase reference count
 // If given pa is not reference counter, panic
 // If integer overflow occurs, panic
 static void
-meta_incr(void *pa)
+meta_incr(struct uvm_meta *meta)
 {
-  // Find metadata
-  struct meta_bisect_result res = meta_bisect(pa);
-  if (!res.exist) {
-    panic("meta_incr: given pa was not shared");
-  }
-
   // Increment RC, check overflow
-  uint8 * const p_counter = &meta_list[res.index].reference_count;
-  if (*p_counter == 0xFF) {
+  if (meta->reference_count == 0xFF) {
     panic("meta_incr: reference counter integer overflow");
   }
-  ++*p_counter;
+  ++meta->reference_count;
 }
 
 // Decrease RC, free the page if RC become 0, panic on overflow
 static void
-meta_decr(void *pa)
+meta_decr_of(void *pa)
 {
   // Find metadata
   struct meta_bisect_result res = meta_bisect(pa);
   if (!res.exist) {
-    panic("meta_decr: given pa was not shared");
+    panic("meta_decr_of: given pa was not shared");
   }
 
   // Decrement RC, check overflow
   uint8 * const p_counter = &meta_list[res.index].reference_count;
   if (*p_counter == 0) {
-    panic("meta_decr: reference counter integer overflow");
+    panic("meta_decr_of: reference counter integer overflow");
   }
 
   --*p_counter;
@@ -343,7 +333,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       pa = PTE2PA(*pte);
-      meta_decr((void*)pa);
+      meta_decr_of((void*)pa);
     }
     *pte = 0;
     if(a == last)
@@ -385,8 +375,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 //
-// Map new pages with given permission. Perform reference counting for given
-// pages if type is UVM_SHARED
+// Map new pages with given permission. Perform reference counting.
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int perm, enum uvm_type type)
 {
@@ -468,13 +457,10 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy or share
+// Given a parent process's page table, share
 // its memory into a child's page table.
-// Copies or share both the page table and the
+// Share both the page table and the
 // physical memory.
-//
-// If a page was reference-counted, the page will be shared.
-// Otherwise, the page will be copied.
 //
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
@@ -495,9 +481,10 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     flags = PTE_FLAGS(*pte);
 
     mem = (char*)pa;
-    meta_incr((void*)pa);
+    struct uvm_meta *meta = meta_of((void*)pa);
+    meta_incr(meta);
     // Set as unwritable if CoW borrow occured
-    if (meta_is_cow((void*)pa)) {
+    if (meta->type == UVM_COW) {
       *pte &= ~PTE_W;
       flags &= ~PTE_W;
     }
@@ -647,23 +634,22 @@ handle_cow_write(uint64 va, pagetable_t pagetable)
   if ((*pte & PTE_U) == 0) { return 1; }
   uint64 pa = PTE2PA(*pte);
 
-  const struct meta_bisect_result res = meta_bisect((void *)pa);
-  if (!res.exist) {
-    panic("usertrap: All UVMs should be shared");
+  struct uvm_meta *meta = meta_of((void *)pa);
+  if (meta == 0) {
+    panic("handle_cow_write: All UVMs should be shared");
   }
-  struct uvm_meta *meta = &meta_list[res.index];
-  if ((meta->type != UVM_SHARED && meta->type != UVM_COW) || meta->reference_count == 0) {
-    panic("usertrap: invalid metadata");
-  }
+
   if (meta->type == UVM_SHARED) {
     return 1;
   }
   if (meta->reference_count == 1) {
+    // This CoW page is not shared, OK to write it
     *pte |= PTE_W;
   } else {
+    // This CoW page is being shared, copy and write it
     --meta->reference_count;
 
-    // TODO: 에러처리 하나도 안함
+    // TODO: No error handling
     void *mem = kalloc();
     memmove(mem, (void *)pa, PGSIZE);
     int flags = PTE_FLAGS(*pte);
