@@ -120,6 +120,12 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Zero out kernel fields for kernel thread
+  p->is_kernel_thread = 0;
+  p->base_prio = 0;
+  p->entry = 0;
+  p->entry_arg = 0;
+
   return p;
 }
 
@@ -142,6 +148,13 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  // Zero out kernel fields for kernel thread
+  p->is_kernel_thread = 0;
+  p->base_prio = 0;
+  p->entry = 0;
+  p->entry_arg = 0;
+
   p->state = UNUSED;
 }
 

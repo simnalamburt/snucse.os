@@ -103,4 +103,10 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // Only for kernel threads
+  int is_kernel_thread;
+  int base_prio;
+  void (*entry)(void *);
+  void *entry_arg;
 };
