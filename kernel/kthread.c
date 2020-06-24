@@ -145,12 +145,14 @@ kthread_set_prio(int newprio)
   struct proc *p = myproc();
   acquire(&p->lock);
 
-  int oldprio = effective_prio_of_locked(p);
+  // TODO: Possible optimization?
+  int before = effective_prio_of_locked(p);
   p->base_prio = newprio;
-  int yield_required = newprio > oldprio;
+  int after = effective_prio_of_locked(p);
 
   release(&p->lock);
-  if (yield_required) {
+
+  if (after > before) {
     kthread_yield();
   }
 }
