@@ -135,9 +135,8 @@ kthread_yield(void)
   yield();
 }
 
-// This function call be called in non-kernel threads
 int
-effective_prio_of_locked(struct proc *p)
+kthread_get_prio_of_locked(struct proc *p)
 {
   // TODO: base prio가 아니라 effective prio 반환하기
   return p->base_prio;
@@ -150,9 +149,9 @@ kthread_set_prio(int newprio)
   acquire(&p->lock);
 
   // TODO: Possible optimization?
-  int before = effective_prio_of_locked(p);
+  int before = kthread_get_prio_of_locked(p);
   p->base_prio = newprio;
-  int after = effective_prio_of_locked(p);
+  int after = kthread_get_prio_of_locked(p);
 
   release(&p->lock);
 
@@ -167,7 +166,7 @@ kthread_get_prio(void)
   struct proc *p = myproc();
   acquire(&p->lock);
 
-  int prio = effective_prio_of_locked(p);
+  int prio = kthread_get_prio_of_locked(p);
 
   release(&p->lock);
   return prio;

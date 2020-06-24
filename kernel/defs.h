@@ -193,7 +193,7 @@ void            kthread_exit(void);
 void            kthread_yield(void);
 void            kthread_set_prio(int);
 int             kthread_get_prio(void);
-int             effective_prio_of_locked(struct proc *);
+int             kthread_get_prio_of_locked(struct proc *);
 int             kthtest(int);
 #endif
 
