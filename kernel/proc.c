@@ -456,28 +456,61 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+
   c->proc = 0;
+  int last_idx = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
+    // Find min_prio
+    int min_prio = 140;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->scheduler, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+        int prio = p->is_kernel_thread ? kthread_get_prio_of_locked(p) : 120;
+        if (prio < min_prio) { min_prio = prio; }
       }
       release(&p->lock);
     }
+    if (min_prio == 140) {
+      // No process is runnable
+      continue;
+    }
+
+    // Find processes with min_prio
+    int i;
+    for (i = 0; i < NPROC; ++i) {
+      p = &proc[(i + last_idx + 1)%NPROC];
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        int prio = p->is_kernel_thread ? kthread_get_prio_of_locked(p) : 120;
+        if (prio <= min_prio) {
+          // TODO: prio < min_prio 가 원래 생기면 안되는데, 멀티코어 환경에선
+          // 생길 수 있다. prio < min_prio 가 없도록 잘 처리해보자.
+          break;
+        }
+        // prio > min_prio, not scheduled
+      }
+      release(&p->lock);
+    }
+    if (i == NPROC) {
+      // Couldn't find processes with min_prio, calculate min_prio
+      continue;
+    }
+
+    // Found a process with min_prio
+    last_idx = (i + last_idx + 1)%NPROC;
+    // Switch to chosen process. It is the process's job to release its lock and
+    // then reacquire it before jumping back to us.
+    p->state = RUNNING;
+    c->proc = p;
+    swtch(&c->scheduler, &p->context);
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    c->proc = 0;
+    release(&p->lock);
   }
 }
 
