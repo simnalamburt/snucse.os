@@ -135,26 +135,38 @@ kthread_yield(void)
   yield();
 }
 
+static int
+effective_prio_of_locked(struct proc *p)
+{
+  // TODO: base prio가 아니라 effective prio 반환하기
+  return p->base_prio;
+}
+
 void
 kthread_set_prio(int newprio)
 {
-  // TODO: 구현하기
+  struct proc *p = myproc();
+  acquire(&p->lock);
 
+  int oldprio = effective_prio_of_locked(p);
+  p->base_prio = newprio;
+  int yield_required = newprio > oldprio;
 
-
-
-  return;
+  release(&p->lock);
+  if (yield_required) {
+    kthread_yield();
+  }
 }
 
 int
 kthread_get_prio(void)
 {
-  // TODO: base prio가 아니라 effective prio 반환하기
   struct proc *p = myproc();
   acquire(&p->lock);
-  int base_prio = p->base_prio;
-  release(&p->lock);
 
-  return base_prio;
+  int prio = effective_prio_of_locked(p);
+
+  release(&p->lock);
+  return prio;
 }
 #endif
