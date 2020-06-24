@@ -89,7 +89,6 @@ found:
   p->base_prio = prio;
   p->entry = fn;
   p->entry_arg = arg;
-  // TODO: 프로그램 카운터와 switch.S가 보존시키지 않는 각종 레지스터들 보존할 장소 필요함
 
   p->state = RUNNABLE;
 
@@ -127,9 +126,7 @@ kthread_exit(void)
 void
 kthread_yield(void)
 {
-  // TODO: yield하즈아
-
-  return;
+  yield();
 }
 
 void
