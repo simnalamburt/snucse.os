@@ -93,6 +93,12 @@ found:
   p->state = RUNNABLE;
 
   release(&p->lock);
+
+  // If new thread's priority is higher than current thread, yield
+  if (prio < kthread_get_prio()) {
+    kthread_yield();
+  }
+
   return p->pid;
 }
 
@@ -143,10 +149,12 @@ kthread_set_prio(int newprio)
 int
 kthread_get_prio(void)
 {
-  // TODO: 구현하기
+  // TODO: base prio가 아니라 effective prio 반환하기
+  struct proc *p = myproc();
+  acquire(&p->lock);
+  int base_prio = p->base_prio;
+  release(&p->lock);
 
-
-
-  return 0;
+  return base_prio;
 }
 #endif
