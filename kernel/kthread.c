@@ -31,16 +31,12 @@ extern pagetable_t kernel_pagetable;
 static void
 kthread_entrypoint(void)
 {
-  void (*entry)(void *);
-  void *entry_arg;
-
+  // 맨 처음 스케줄링되면, 프로세스가 락된 상태임
   struct proc *p = myproc();
-  entry = p->entry;
-  entry_arg = p->entry_arg;
   release(&p->lock);
 
   // Jump into the entrypoint, never to return.
-  entry(entry_arg);
+  p->entry(p->entry_arg);
   panic("Kernel thread finished without calling kthread_exit()");
 }
 
