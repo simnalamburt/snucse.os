@@ -93,6 +93,8 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
+  int is_kernel_thread;
+  int base_prio;
 
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Bottom of kernel stack for this process
@@ -103,10 +105,6 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
-  // Only for kernel threads
-  int is_kernel_thread;
-  int base_prio;
   void (*entry)(void *);
   void *entry_arg;
 };

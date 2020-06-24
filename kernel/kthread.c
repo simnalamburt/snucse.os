@@ -110,6 +110,8 @@ kthread_exit(void)
   p->killed = 0;
   p->xstate = 0;
   p->pid = 0;
+  p->is_kernel_thread = 0;
+  p->base_prio = 0;
 
   p->sz = 0;
   p->pagetable = 0;
@@ -117,6 +119,8 @@ kthread_exit(void)
 
   p->cwd = 0;
   p->name[0] = 0;
+  p->entry = 0;
+  p->entry_arg = 0;
 
   p->state = UNUSED;
 
