@@ -123,6 +123,7 @@ found:
   // Zero out kernel fields for kernel thread
   p->is_kernel_thread = 0;
   p->base_prio = 0;
+  p->acquired_sleeplock_num = 0;
   p->entry = 0;
   p->entry_arg = 0;
 
@@ -152,6 +153,7 @@ freeproc(struct proc *p)
   // Zero out kernel fields for kernel thread
   p->is_kernel_thread = 0;
   p->base_prio = 0;
+  p->acquired_sleeplock_num = 0;
   p->entry = 0;
   p->entry_arg = 0;
 

@@ -95,6 +95,8 @@ struct proc {
   int pid;                     // Process ID
   int is_kernel_thread;
   int base_prio;
+  int acquired_sleeplock_num;
+  struct sleeplock *acquired_sleeplock[32];
 
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Bottom of kernel stack for this process

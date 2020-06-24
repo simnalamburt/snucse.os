@@ -83,6 +83,7 @@ found:
   // Save kernel thread specific informations
   p->is_kernel_thread = 1;
   p->base_prio = prio;
+  p->acquired_sleeplock_num = 0;
   p->entry = fn;
   p->entry_arg = arg;
 
@@ -112,6 +113,7 @@ kthread_exit(void)
   p->pid = 0;
   p->is_kernel_thread = 0;
   p->base_prio = 0;
+  p->acquired_sleeplock_num = 0;
 
   p->sz = 0;
   p->pagetable = 0;
@@ -138,8 +140,29 @@ kthread_yield(void)
 int
 kthread_get_prio_of_locked(struct proc *p)
 {
-  // TODO: base prio가 아니라 effective prio 반환하기
-  return p->base_prio;
+  int min_prio = p->base_prio;
+
+  // 내가 가진 락이 없을경우, 아무도 나에게 도네이트해주지 않는다.
+  if (p->acquired_sleeplock_num == 0) { return min_prio; }
+
+  // 내가 가진 락이 있을경우, 누군가 나에게 도네이트했을 수 있다. 내가 가진
+  // 락들에 기대고 자고있는 프로세스를 찾자.
+  for (int i = 0; i < p->acquired_sleeplock_num; ++i) {
+    struct sleeplock *acquired = p->acquired_sleeplock[i];
+    for (int i = 0; i < NPROC; ++i) {
+      struct proc *p = &proc[i];
+      // TODO: p 락잡기
+      if (p->chan == acquired) {
+        int prio = kthread_get_prio_of_locked(p);
+        if (prio < min_prio) {
+          min_prio = prio;
+        }
+      }
+    }
+  }
+  // TODO: 시간복잡도 안좋음
+
+  return min_prio;
 }
 
 void
