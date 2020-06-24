@@ -135,7 +135,8 @@ kthread_yield(void)
   yield();
 }
 
-static int
+// This function call be called in non-kernel threads
+int
 effective_prio_of_locked(struct proc *p)
 {
   // TODO: base prio가 아니라 effective prio 반환하기
