@@ -29,7 +29,7 @@ extern int allocpid();
 extern pagetable_t kernel_pagetable;
 
 static void
-_kthread_entrypoint(void)
+kthread_entrypoint(void)
 {
   void (*entry)(void *);
   void *entry_arg;
@@ -77,7 +77,7 @@ found:
 
   // Initialize context
   memset(&p->context, 0, sizeof p->context);
-  p->context.ra = (uint64)_kthread_entrypoint;
+  p->context.ra = (uint64)kthread_entrypoint;
   p->context.sp = p->kstack + PGSIZE;
 
   // Leave p->ofile untouched
